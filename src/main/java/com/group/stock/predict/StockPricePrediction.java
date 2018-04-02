@@ -31,13 +31,17 @@ public class StockPricePrediction {
     public static void main(String[] args) throws IOException{
         SparkConf sparkConf = new SparkConf();
         //control whether running in the local or cluster
-        boolean useSparkLocal = true;
+        boolean useSparkLocal = false;
         int averagingFrequency = 3;
         int batchSizePerWorker = 8;
         if (useSparkLocal) {
             sparkConf.setMaster("local[*]");
         }
-        sparkConf.setAppName("LSTM Character Example");
+        //https://deeplearning4j.org/spark#kryo
+        sparkConf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
+        sparkConf.set("spark.kryo.registrator", "org.nd4j.Nd4jRegistrator");
+
+        sparkConf.setAppName("Stock prediction with LSTM");
         JavaSparkContext sc = new JavaSparkContext(sparkConf);
 
 

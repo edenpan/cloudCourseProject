@@ -13,6 +13,7 @@ import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.spark.impl.multilayer.SparkDl4jMultiLayer;
 import org.deeplearning4j.util.ModelSerializer;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
+import org.deeplearning4j.optimize.api.IterationListener;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
@@ -22,6 +23,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
 public class StockPricePrediction {
@@ -67,7 +69,7 @@ public class StockPricePrediction {
         MultiLayerConfiguration conf = RecurrentNetsModelConf.buildLstmNetworksConf(iterator.inputColumns(), iterator.totalOutcomes());
         //change to spark distribute mode
         SparkDl4jMultiLayer net = new SparkDl4jMultiLayer(sc, conf, tm);
-        net.setListeners(new ScoreIterationListener(100));
+        net.setListeners(Collections.<IterationListener>singletonList(new ScoreIterationListener(1000)));
         //Set up the TrainingMaster. The TrainingMaster controls how learning is actually executed on Spark
         //Here, we are using standard parameter averaging
         //For details on these configuration options, see: https://deeplearning4j.org/spark#configuring
@@ -81,7 +83,6 @@ public class StockPricePrediction {
 //                System.out.println("DataSet: " + trainData);
                 List<DataSet> asList = trainData.asList();
                 net.fit(sc.parallelize(asList));
-
             }
             iterator.reset(); // reset iterator
             net.getNetwork().rnnClearPreviousState(); // clear previous state

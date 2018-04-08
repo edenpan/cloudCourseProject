@@ -14,6 +14,7 @@ import org.deeplearning4j.spark.impl.multilayer.SparkDl4jMultiLayer;
 import org.deeplearning4j.util.ModelSerializer;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
 
 import org.slf4j.Logger;
@@ -75,7 +76,12 @@ public class StockPricePrediction {
 
         log.info("Training...");
         for (int i = 0; i < epochs; i++) {
-            while (iterator.hasNext()) net.getNetwork().fit(iterator.next()); // fit model using mini-batch data
+            while (iterator.hasNext()) {
+                DataSet trainData = iterator.next();
+                System.out.println("DataSet: " + trainData);
+                net.getNetwork().fit(iterator.next()); // fit model using mini-batch data
+
+            }
             iterator.reset(); // reset iterator
             net.getNetwork().rnnClearPreviousState(); // clear previous state
         }

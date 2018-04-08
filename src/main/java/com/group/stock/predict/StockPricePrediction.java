@@ -80,7 +80,7 @@ public class StockPricePrediction {
                 DataSet trainData = iterator.next();
 //                System.out.println("DataSet: " + trainData);
                 List<DataSet> asList = trainData.asList();
-                net.getNetwork().fit(sc.parallelize(asList)); // fit model using mini-batch data
+                net.fit(sc.parallelize(asList));
 
             }
             iterator.reset(); // reset iterator

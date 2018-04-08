@@ -45,7 +45,7 @@ public class StockPricePrediction {
         sparkConf.setAppName("Stock prediction with LSTM");
         JavaSparkContext sc = new JavaSparkContext(sparkConf);
 
-        String file = "./target/classes/prices-split-adjusted.csv";
+        String file = "/stockPrice/prices-split-adjusted.csv";
         String symbol = "GOOG";
         int batchSize = 64;
         double splitRatio = 0.9; // 90% for training, 10% for testing
@@ -78,8 +78,9 @@ public class StockPricePrediction {
         for (int i = 0; i < epochs; i++) {
             while (iterator.hasNext()) {
                 DataSet trainData = iterator.next();
-                System.out.println("DataSet: " + trainData);
-                net.getNetwork().fit(iterator.next()); // fit model using mini-batch data
+//                System.out.println("DataSet: " + trainData);
+                List<DataSet> asList = trainData.asList();
+                net.getNetwork().fit(sc.parallelize(asList)); // fit model using mini-batch data
 
             }
             iterator.reset(); // reset iterator

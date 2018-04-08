@@ -44,10 +44,6 @@ public class StockPricePrediction {
         sparkConf.setAppName("Stock prediction with LSTM");
         JavaSparkContext sc = new JavaSparkContext(sparkConf);
 
-
-        log.info("Working Directory = " +
-                System.getProperty("user.dir"));
-//        String file = new ClassPathResource("prices-splits-adjusted.csv").getFile().getAbsolutePath();
         String file = "./target/classes/prices-split-adjusted.csv";
         String symbol = "GOOG";
         int batchSize = 64;
@@ -56,7 +52,7 @@ public class StockPricePrediction {
 
         log.info("Create dataSet iterator...");
         PriceCategory category = PriceCategory.CLOSE; // CLOSE: predict close price
-        StockDataSetIterator iterator = new StockDataSetIterator(file, symbol, batchSize, exampleLength, splitRatio, category);
+        StockDataSetIterator iterator = new StockDataSetIterator(sc, file, symbol, batchSize, exampleLength, splitRatio, category);
         log.info("Load test dataset...");
         List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
 

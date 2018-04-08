@@ -1,48 +1,51 @@
 package com.group.stock.representation;
 
 import com.google.common.collect.ImmutableMap;
-import com.opencsv.CSVReader;
 import javafx.util.Pair;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.function.Function;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.dataset.api.DataSetPreProcessor;
 import org.nd4j.linalg.dataset.api.iterator.DataSetIterator;
 import org.nd4j.linalg.factory.Nd4j;
 
-import java.io.FileReader;
-import java.io.IOException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.apache.spark.api.java.JavaSparkContext;
 import java.util.*;
 
+
 public class StockDataSetIterator implements DataSetIterator {
-    private final Map<PriceCategory, Integer> featureMapIndex =
-            ImmutableMap.of(PriceCategory.OPEN, 0, PriceCategory.CLOSE, 1,
-                    PriceCategory.LOW, 2, PriceCategory.HIGH, 3, PriceCategory.VOLUME, 4);
+    private static final Logger log = LoggerFactory.getLogger(StockDataSetIterator.class);
+    /** category and its index */
+    private final Map<PriceCategory, Integer> featureMapIndex = ImmutableMap.of(PriceCategory.OPEN, 0, PriceCategory.CLOSE, 1,
+            PriceCategory.LOW, 2, PriceCategory.HIGH, 3, PriceCategory.VOLUME, 4);
 
-    private final int VECTOR_SIZE = 5;
-    private int miniBatchSize;
-    private int exampleLength = 22;
-    private int predictLength = 1;
+    private final int VECTOR_SIZE = 5; // number of features for a stock data
+    private int miniBatchSize; // mini-batch size
+    private int exampleLength = 22; // default 22, say, 22 working days per month
+    private int predictLength = 1; // default 1, say, one day ahead prediction
 
+    /** minimal values of each feature in stock dataset */
     private double[] minArray = new double[VECTOR_SIZE];
+    /** maximal values of each feature in stock dataset */
     private double[] maxArray = new double[VECTOR_SIZE];
 
+    /** feature to be selected as a training target */
     private PriceCategory category;
 
+    /** mini-batch offset */
     private LinkedList<Integer> exampleStartOffsets = new LinkedList<>();
 
-    private List<StockData > train;
-
+    /** stock dataset for training */
+    private List<StockData> train;
+    /** adjusted stock dataset for testing */
     private List<Pair<INDArray, INDArray>> test;
 
-    /*the initial function from the file with symbol,
-    * miniBatchSize：最小的训练集数据大小。
-    * exampleLength：
-    * splitRatio：
-    *
-    * */
-    public StockDataSetIterator(String fileName, String symbol, int miniBatchSize, int exampleLength, double splitRatio
-    , PriceCategory category){
-        List<StockData> stockDataList = readStockDataFromFile(fileName, symbol);
+    public StockDataSetIterator (JavaSparkContext sc, String filename, String symbol, int miniBatchSize, int exampleLength, double splitRatio, PriceCategory category) {
+        List<StockData> stockDataList = readStockDataFromFile(sc, filename, symbol);
         this.miniBatchSize = miniBatchSize;
         this.exampleLength = exampleLength;
         this.category = category;
@@ -190,28 +193,37 @@ public class StockDataSetIterator implements DataSetIterator {
         return test;
     }
 
-    private List<StockData> readStockDataFromFile (String filename, String symbol) {
-        List<StockData> stockDataList = new ArrayList<>();
-        try {
-            for (int i = 0; i < maxArray.length; i++) { // initialize max and min arrays
-                maxArray[i] = Double.MIN_VALUE;
-                minArray[i] = Double.MAX_VALUE;
-            }
-            List<String[]> list = new CSVReader(new FileReader(filename)).readAll(); // load all elements in a list
-            for (String[] arr : list) {
-                if (!arr[1].equals(symbol)) continue;
-                double[] nums = new double[VECTOR_SIZE];
-                for (int i = 0; i < arr.length - 2; i++) {
-                    nums[i] = Double.valueOf(arr[i + 2]);
-                    if (nums[i] > maxArray[i]) maxArray[i] = nums[i];
-                    if (nums[i] < minArray[i]) minArray[i] = nums[i];
-                }
-                stockDataList.add(new StockData(arr[0], arr[1], nums[0], nums[1], nums[2], nums[3], nums[4]));
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+    private List<StockData> readStockDataFromFile (JavaSparkContext sc, String filename, String symbol) {
+        List<StockData> stockList = new ArrayList<>();
+        JavaRDD<String> stockDataList = sc.textFile(filename);
+
+        for (int i = 0; i < maxArray.length; i++) { // initialize max and min arrays
+            maxArray[i] = Double.MIN_VALUE;
+            minArray[i] = Double.MAX_VALUE;
         }
-        return stockDataList;
+        // load all elements in a list
+        JavaRDD<String> withSymbol = stockDataList.filter(new Function<String, Boolean>() {
+            @Override
+            public Boolean call(String s) throws Exception {
+                return s.contains(symbol);
+            }
+        });
+        List<String> stockListString = withSymbol.collect();
+        System.out.println("StockList: " + stockListString);
+        for (String stock : stockListString){
+            String[] element = stock.split(",");
+            double[] nums = new double[VECTOR_SIZE];
+            for (int i = 0; i < VECTOR_SIZE; i++){
+                nums[i] = Double.valueOf(element[i + 2]);
+                if (nums[i] > maxArray[i]) maxArray[i] = nums[i];
+                if (nums[i] < minArray[i]) minArray[i] = nums[i];
+
+            }
+            stockList.add(new StockData(element[0], element[1], nums[0], nums[1], nums[2], nums[3], nums[4]));
+        }
+
+        return stockList;
+
     }
 }
 

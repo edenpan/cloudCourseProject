@@ -14,6 +14,7 @@ import org.deeplearning4j.spark.impl.multilayer.SparkDl4jMultiLayer;
 import org.deeplearning4j.util.ModelSerializer;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.optimize.api.IterationListener;
+import org.deeplearning4j.spark.api.RDDTrainingApproach;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
@@ -65,6 +66,7 @@ public class StockPricePrediction {
                 .workerPrefetchNumBatches(2)    //Asynchronously prefetch up to 2 batches
                 .averagingFrequency(averagingFrequency)
                 .batchSizePerWorker(batchSizePerWorker)
+                .rddTrainingApproach(RDDTrainingApproach.Direct)
                 .build();
         MultiLayerConfiguration conf = RecurrentNetsModelConf.buildLstmNetworksConf(iterator.inputColumns(), iterator.totalOutcomes());
         //change to spark distribute mode

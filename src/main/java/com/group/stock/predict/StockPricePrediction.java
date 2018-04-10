@@ -71,7 +71,7 @@ public class StockPricePrediction {
         MultiLayerConfiguration conf = RecurrentNetsModelConf.buildLstmNetworksConf(iterator.inputColumns(), iterator.totalOutcomes());
         //change to spark distribute mode
         SparkDl4jMultiLayer net = new SparkDl4jMultiLayer(sc, conf, tm);
-        net.setListeners(Collections.<IterationListener>singletonList(new ScoreIterationListener(1000)));
+        net.setListeners(Collections.<IterationListener>singletonList(new ScoreIterationListener(1)));
         //Set up the TrainingMaster. The TrainingMaster controls how learning is actually executed on Spark
         //Here, we are using standard parameter averaging
         //For details on these configuration options, see: https://deeplearning4j.org/spark#configuring
@@ -79,6 +79,7 @@ public class StockPricePrediction {
 
 
         log.info("Training...");
+        System.out.println("IteratationCount1: " + net.getNetwork().getDefaultConfiguration().getIterationCount());
         for (int i = 0; i < epochs; i++) {
             while (iterator.hasNext()) {
                 DataSet trainData = iterator.next();
@@ -87,9 +88,12 @@ public class StockPricePrediction {
                 net.fit(sc.parallelize(asList));
             }
             iterator.reset(); // reset iterator
+            System.out.println("IteratationCount2: " + net.getNetwork().getDefaultConfiguration().getIterationCount());
+            System.out.println("epochs count: " + i);
+
             net.getNetwork().rnnClearPreviousState(); // clear previous state
         }
-
+        System.out.println("IteratationCount3: " + net.getNetwork().getDefaultConfiguration().getIterationCount());
         log.info("Saving model...");
         File locationToSave = new File("src/main/resources/StockPriceLSTM_".concat(String.valueOf(category)).concat(".zip"));
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future

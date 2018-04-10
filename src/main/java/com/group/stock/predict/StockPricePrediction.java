@@ -50,13 +50,13 @@ public class StockPricePrediction {
 
         String file = "/stockPrice/prices-split-adjusted.csv";
         String symbol = "GOOG";
-        int batchSize = 64;
+        int batchSize = -1;
         double splitRatio = 0.9; // 90% for training, 10% for testing
         int epochs = 100; // training epochs
 
         log.info("Create dataSet iterator...");
         PriceCategory category = PriceCategory.CLOSE; // CLOSE: predict close price
-        StockDataSetIterator iterator = new StockDataSetIterator(sc, file, symbol, batchSize, exampleLength, splitRatio, category);
+        StockDataSetIterator iterator = new StockDataSetIterator(sc, file, symbol, batchSize, 1, exampleLength, splitRatio, category);
         log.info("Load test dataset...");
         List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
 

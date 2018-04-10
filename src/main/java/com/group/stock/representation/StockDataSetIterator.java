@@ -27,6 +27,8 @@ public class StockDataSetIterator implements DataSetIterator {
     private int miniBatchSize; // mini-batch size
     private int exampleLength = 22; // default 22, say, 22 working days per month
     private int predictLength = 1; // default 1, say, one day ahead prediction
+    private int batchSplit; //the total data size/ batchSplit to get miniBatchSize
+    private int dataSize;
 
     /** minimal values of each feature in stock dataset */
     private double[] minArray = new double[VECTOR_SIZE];
@@ -45,16 +47,22 @@ public class StockDataSetIterator implements DataSetIterator {
     private List<Pair<INDArray, INDArray>> test;
 
 
-    public StockDataSetIterator (JavaSparkContext sc, String filename, String symbol, int miniBatchSize, int exampleLength, double splitRatio, PriceCategory category) {
+
+
+    public StockDataSetIterator (JavaSparkContext sc, String filename, String symbol, int miniBatchSize, int batchSplit, int exampleLength, double splitRatio, PriceCategory category) {
         List<StockData> stockDataList = readStockDataFromFile(sc, filename, symbol);
-        this.miniBatchSize = miniBatchSize;
+        if(miniBatchSize != -1 ){
+            this.miniBatchSize = miniBatchSize;
+        } else {
+            miniBatchSize = dataSize/batchSplit;
+        }
+
         this.exampleLength = exampleLength;
         this.category = category;
         int split = (int) Math.round(stockDataList.size() * splitRatio);
         train = stockDataList.subList(0, split);
         test = generateTestDataSet(stockDataList.subList(split, stockDataList.size()));
-
-
+        dataSize = stockDataList.size();
 
         initializeOffsets();
     }

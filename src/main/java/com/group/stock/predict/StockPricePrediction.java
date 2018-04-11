@@ -8,6 +8,7 @@ import javafx.util.Pair;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
+import org.deeplearning4j.spark.api.stats.SparkTrainingStats;
 import org.deeplearning4j.spark.impl.paramavg.ParameterAveragingTrainingMaster;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
 import org.deeplearning4j.spark.impl.multilayer.SparkDl4jMultiLayer;
@@ -15,6 +16,7 @@ import org.deeplearning4j.util.ModelSerializer;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.optimize.api.IterationListener;
 import org.deeplearning4j.spark.api.RDDTrainingApproach;
+import org.deeplearning4j.spark.stats.StatsUtils;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
@@ -36,8 +38,8 @@ public class StockPricePrediction {
         SparkConf sparkConf = new SparkConf();
         //control whether running in the local or cluster
         boolean useSparkLocal = false;
-        int averagingFrequency = 3;
-        int batchSizePerWorker = 8;
+        int averagingFrequency = 10;
+        int batchSizePerWorker = 64;
         if (useSparkLocal) {
             sparkConf.setMaster("local[*]");
         }
@@ -63,7 +65,7 @@ public class StockPricePrediction {
         log.info("Build lstm networks...");
         int examplesPerDataSetObject = 1;
         ParameterAveragingTrainingMaster tm = new ParameterAveragingTrainingMaster.Builder(examplesPerDataSetObject)
-                .workerPrefetchNumBatches(2)    //Asynchronously prefetch up to 2 batches
+                .workerPrefetchNumBatches(10)    //Asynchronously prefetch up to 2 batches
                 .averagingFrequency(averagingFrequency)
                 .batchSizePerWorker(batchSizePerWorker)
                 .rddTrainingApproach(RDDTrainingApproach.Direct)
@@ -73,6 +75,7 @@ public class StockPricePrediction {
 
         SparkDl4jMultiLayer net = new SparkDl4jMultiLayer(sc, conf, tm);
         net.setListeners(Collections.<IterationListener>singletonList(new ScoreIterationListener(1)));
+        net.setCollectTrainingStats(true);     //Enable collection
         //Set up the TrainingMaster. The TrainingMaster controls how learning is actually executed on Spark
         //Here, we are using standard parameter averaging
         //For details on these configuration options, see: https://deeplearning4j.org/spark#configuring
@@ -87,6 +90,13 @@ public class StockPricePrediction {
 //                System.out.println("DataSet: " + trainData);
                 List<DataSet> asList = trainData.asList();
                 net.fit(sc.parallelize(asList));
+                SparkTrainingStats stats = net.getSparkTrainingStats();
+                try {
+                    StatsUtils.exportStatsAsHtml(stats, "SparkStats" + i + ".html", sc);
+                }catch(Exception e){
+                    log.error(e.getMessage());
+                }
+
             }
             iterator.reset(); // reset iterator
 //            System.out.println("IteratationCount2: " + net.getNetwork().getDefaultConfiguration().getIterationCount());

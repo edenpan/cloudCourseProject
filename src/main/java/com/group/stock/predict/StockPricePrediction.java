@@ -52,7 +52,7 @@ public class StockPricePrediction {
         String symbol = "GOOG";
         int batchSize = -1;
         double splitRatio = 0.9; // 90% for training, 10% for testing
-        int epochs = 100; // training epochs
+        int epochs = 1; // training epochs
 
         log.info("Create dataSet iterator...");
         PriceCategory category = PriceCategory.CLOSE; // CLOSE: predict close price
@@ -70,6 +70,7 @@ public class StockPricePrediction {
                 .build();
         MultiLayerConfiguration conf = RecurrentNetsModelConf.buildLstmNetworksConf(iterator.inputColumns(), iterator.totalOutcomes());
         //change to spark distribute mode
+
         SparkDl4jMultiLayer net = new SparkDl4jMultiLayer(sc, conf, tm);
         net.setListeners(Collections.<IterationListener>singletonList(new ScoreIterationListener(1)));
         //Set up the TrainingMaster. The TrainingMaster controls how learning is actually executed on Spark
@@ -88,12 +89,12 @@ public class StockPricePrediction {
                 net.fit(sc.parallelize(asList));
             }
             iterator.reset(); // reset iterator
-            System.out.println("IteratationCount2: " + net.getNetwork().getDefaultConfiguration().getIterationCount());
-            System.out.println("epochs count: " + i);
+//            System.out.println("IteratationCount2: " + net.getNetwork().getDefaultConfiguration().getIterationCount());
+            log.info("epochs count: " + i);
 
             net.getNetwork().rnnClearPreviousState(); // clear previous state
         }
-        System.out.println("IteratationCount3: " + net.getNetwork().getDefaultConfiguration().getIterationCount());
+        log.info(("IteratationCount3: " + net.getNetwork().getDefaultConfiguration().getIterationCount());
         log.info("Saving model...");
         File locationToSave = new File("src/main/resources/StockPriceLSTM_".concat(String.valueOf(category)).concat(".zip"));
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future

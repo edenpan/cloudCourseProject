@@ -51,10 +51,11 @@ public class StockDataSetIterator implements DataSetIterator {
 
     public StockDataSetIterator (JavaSparkContext sc, String filename, String symbol, int miniBatchSize, int batchSplit, int exampleLength, double splitRatio, PriceCategory category) {
         List<StockData> stockDataList = readStockDataFromFile(sc, filename, symbol);
+        this.dataSize = stockDataList.size();
         if(miniBatchSize != -1 ){
             this.miniBatchSize = miniBatchSize;
         } else {
-            miniBatchSize = dataSize/batchSplit;
+            this.miniBatchSize = dataSize/batchSplit;
         }
 
         this.exampleLength = exampleLength;
@@ -62,7 +63,7 @@ public class StockDataSetIterator implements DataSetIterator {
         int split = (int) Math.round(stockDataList.size() * splitRatio);
         train = stockDataList.subList(0, split);
         test = generateTestDataSet(stockDataList.subList(split, stockDataList.size()));
-        dataSize = stockDataList.size();
+
 
         initializeOffsets();
     }

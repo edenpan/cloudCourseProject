@@ -14,7 +14,7 @@ import org.nd4j.linalg.lossfunctions.LossFunctions;
 
 
 public class RecurrentNetsModelConf {
-    private static final double learningRate = 0.05;
+    private static final double learningRate = 0.1;
     private static final int iteration = 1;
     private static final int seed = 12345;
 
@@ -28,7 +28,7 @@ public class RecurrentNetsModelConf {
         MultiLayerConfiguration conf = new NeuralNetConfiguration.Builder().seed(seed)
                 .iterations(iteration)
                 .learningRate(learningRate)
-                .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT)
+                .optimizationAlgo(OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT).iterations(1)
                 .weightInit(WeightInit.XAVIER)
                 .updater(Updater.RMSPROP)
                 .regularization(true)
@@ -66,9 +66,7 @@ public class RecurrentNetsModelConf {
                 .backprop(true)
                 .build();
 
-//        MultiLayerNetwork net = new MultiLayerNetwork(conf);
-//        net.init();
-//        net.setListeners(new ScoreIterationListener(100));
+
         return conf;
     }
 }

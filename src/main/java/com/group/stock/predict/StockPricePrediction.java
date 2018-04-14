@@ -5,6 +5,7 @@ import com.group.stock.representation.PriceCategory;
 import com.group.stock.representation.StockDataSetIterator;
 import com.group.stock.utils.PlotUtils;
 import javafx.util.Pair;
+import org.apache.avro.generic.GenericData;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -34,6 +35,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -86,11 +88,12 @@ public class StockPricePrediction {
         net.setListeners(Collections.<IterationListener>singletonList(new ScoreIterationListener(1)));
         //just get all the data and i just set the lenght of iterator is 1.
 
-        DataSet testData = new DataSet();
+        List<DataSet> testData = new ArrayList<>();
         while(iterator.hasNext()){
-            testData.merge(iterator.next().asList());
+            List<DataSet> temp = iterator.next().asList();
+            testData.addAll(temp);
         }
-        JavaRDD<DataSet> testRdd = (JavaRDD<DataSet>)sc.parallelize(testData.asList());
+        JavaRDD<DataSet> testRdd = (JavaRDD<DataSet>)sc.parallelize(testData);
 
 
 

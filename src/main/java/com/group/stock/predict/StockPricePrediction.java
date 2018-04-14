@@ -6,17 +6,25 @@ import com.group.stock.representation.StockDataSetIterator;
 import com.group.stock.utils.PlotUtils;
 import javafx.util.Pair;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.deeplearning4j.earlystopping.EarlyStoppingConfiguration;
+import org.deeplearning4j.earlystopping.saver.InMemoryModelSaver;
+import org.deeplearning4j.earlystopping.EarlyStoppingModelSaver;
+import org.deeplearning4j.earlystopping.termination.MaxEpochsTerminationCondition;
+import org.deeplearning4j.earlystopping.termination.MaxScoreIterationTerminationCondition;
+import org.deeplearning4j.earlystopping.trainer.IEarlyStoppingTrainer;
 import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
-import org.deeplearning4j.spark.api.stats.SparkTrainingStats;
+import org.deeplearning4j.earlystopping.EarlyStoppingResult;
+import org.deeplearning4j.spark.earlystopping.SparkDataSetLossCalculator;
+import org.deeplearning4j.spark.earlystopping.SparkEarlyStoppingTrainer;
 import org.deeplearning4j.spark.impl.paramavg.ParameterAveragingTrainingMaster;
 import org.deeplearning4j.nn.multilayer.MultiLayerNetwork;
-import org.deeplearning4j.spark.impl.multilayer.SparkDl4jMultiLayer;
+
 import org.deeplearning4j.util.ModelSerializer;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.optimize.api.IterationListener;
 import org.deeplearning4j.spark.api.RDDTrainingApproach;
-import org.deeplearning4j.spark.stats.StatsUtils;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
@@ -29,6 +37,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.concurrent.TimeUnit;
 public class StockPricePrediction {
 
     private static final Logger log = LoggerFactory.getLogger(StockPricePrediction.class);
@@ -73,55 +82,49 @@ public class StockPricePrediction {
         MultiLayerConfiguration conf = RecurrentNetsModelConf.buildLstmNetworksConf(iterator.inputColumns(), iterator.totalOutcomes());
         //change to spark distribute mode
 
-        SparkDl4jMultiLayer net = new SparkDl4jMultiLayer(sc, conf, tm);
+        MultiLayerNetwork net = new MultiLayerNetwork(conf);
         net.setListeners(Collections.<IterationListener>singletonList(new ScoreIterationListener(1)));
-        net.setCollectTrainingStats(true);     //Enable collection
-        //Set up the TrainingMaster. The TrainingMaster controls how learning is actually executed on Spark
-        //Here, we are using standard parameter averaging
-        //For details on these configuration options, see: https://deeplearning4j.org/spark#configuring
+        //just get all the data and i just set the lenght of iterator is 1.
 
-
-
-        log.info("Training...");
-        System.out.println("IteratationCount1: " + net.getNetwork().getDefaultConfiguration().getIterationCount());
-        for (int i = 0; i < epochs; i++) {
-            while (iterator.hasNext()) {
-                DataSet trainData = iterator.next();
-//                System.out.println("DataSet: " + trainData);
-                List<DataSet> asList = trainData.asList();
-                net.fit(sc.parallelize(asList));
-                SparkTrainingStats stats = net.getSparkTrainingStats();
-                try {
-                    StatsUtils.exportStatsAsHtml(stats, "src/main/resources/SparkStats" + i + ".html", sc);
-                }catch(Exception e){
-                    log.error(e.getMessage());
-                }
-
-            }
-            iterator.reset(); // reset iterator
-//            System.out.println("IteratationCount2: " + net.getNetwork().getDefaultConfiguration().getIterationCount());
-            log.info("epochs count: " + i);
-
-            net.getNetwork().rnnClearPreviousState(); // clear previous state
+        DataSet testData = new DataSet();
+        while(iterator.hasNext()){
+            testData.merge(iterator.next().asList());
         }
-        log.info(("IteratationCount3: " + net.getNetwork().getDefaultConfiguration().getIterationCount()));
+        JavaRDD<DataSet> testRdd = (JavaRDD<DataSet>)sc.parallelize(testData.asList());
+
+
+
+        EarlyStoppingModelSaver<MultiLayerNetwork> saver = new InMemoryModelSaver<>();
+        EarlyStoppingConfiguration<MultiLayerNetwork> esConf =
+                new EarlyStoppingConfiguration.Builder<MultiLayerNetwork>()
+                        .epochTerminationConditions(new MaxEpochsTerminationCondition(5))
+                        .iterationTerminationConditions(new MaxScoreIterationTerminationCondition(7.5))
+                        .scoreCalculator(new SparkDataSetLossCalculator(testRdd, true, sc.sc()))
+                        .modelSaver(saver).build();
+        IEarlyStoppingTrainer<MultiLayerNetwork> trainer = new SparkEarlyStoppingTrainer(sc, tm, esConf, net, testRdd);
+        log.info("Training...");
+        EarlyStoppingResult result = trainer.fit();
+
+        log.info("epoch number: " + result.getTotalEpochs());
+
         log.info("Saving model...");
         File locationToSave = new File("src/main/resources/StockPriceLSTM_".concat(String.valueOf(category)).concat(".zip"));
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
-        ModelSerializer.writeModel(net.getNetwork(), locationToSave, true);
-
+        ModelSerializer.writeModel(result.getBestModel(), locationToSave, true);
+        result.getBestModel().fit();
         log.info("Load model...");
-        net.setNetwork(ModelSerializer.restoreMultiLayerNetwork(locationToSave));
+        net = ModelSerializer.restoreMultiLayerNetwork(locationToSave);
+
 
         log.info("Testing...");
         if (category.equals(PriceCategory.ALL)) {
             INDArray max = Nd4j.create(iterator.getMaxArray());
             INDArray min = Nd4j.create(iterator.getMinArray());
-            predictAllCategories(net.getNetwork(), test, max, min);
+            predictAllCategories(net, test, max, min);
         } else {
             double max = iterator.getMaxNum(category);
             double min = iterator.getMinNum(category);
-            predictPriceOneAhead(net.getNetwork(), test, max, min, category);
+            predictPriceOneAhead(net, test, max, min, category);
         }
         log.info("Done...");
     }
@@ -130,13 +133,13 @@ public class StockPricePrediction {
     private static void predictPriceOneAhead (MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, double max, double min, PriceCategory category) {
         double[] predicts = new double[testData.size()];
         double[] actuals = new double[testData.size()];
-        log.info("testData" + testData);
+
         for (int i = 0; i < testData.size(); i++) {
+            //here is use the testdata key that is the previous 21days number to predict next day .and with some transform.
             predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getDouble(exampleLength - 1) * (max - min) + min;
             actuals[i] = testData.get(i).getValue().getDouble(0);
         }
-        log.info("Afer predice the testData" + testData);
-        log.info("Afer predice the predicts" + predicts);
+
         log.info("Print out Predictions and Actual Values...");
         log.info("Predict,Actual");
         for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "," + actuals[i]);

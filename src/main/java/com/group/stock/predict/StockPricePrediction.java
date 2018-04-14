@@ -100,8 +100,8 @@ public class StockPricePrediction {
         EarlyStoppingModelSaver<MultiLayerNetwork> saver = new InMemoryModelSaver<>();
         EarlyStoppingConfiguration<MultiLayerNetwork> esConf =
                 new EarlyStoppingConfiguration.Builder<MultiLayerNetwork>()
-                        .epochTerminationConditions(new MaxEpochsTerminationCondition(5))
-                        .iterationTerminationConditions(new MaxScoreIterationTerminationCondition(7.5))
+                        .epochTerminationConditions(new MaxEpochsTerminationCondition(100))
+                        .iterationTerminationConditions(new MaxScoreIterationTerminationCondition(8.5))
                         .scoreCalculator(new SparkDataSetLossCalculator(testRdd, true, sc.sc()))
                         .modelSaver(saver).build();
         IEarlyStoppingTrainer<MultiLayerNetwork> trainer = new SparkEarlyStoppingTrainer(sc, tm, esConf, net, testRdd);
@@ -114,7 +114,7 @@ public class StockPricePrediction {
         File locationToSave = new File("src/main/resources/StockPriceLSTM_".concat(String.valueOf(category)).concat(".zip"));
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
         ModelSerializer.writeModel(result.getBestModel(), locationToSave, true);
-        result.getBestModel().fit();
+//        result.getBestModel().fit();
         log.info("Load model...");
         net = ModelSerializer.restoreMultiLayerNetwork(locationToSave);
 

@@ -92,7 +92,7 @@ public class StockPricePrediction {
                 net.fit(sc.parallelize(asList));
                 SparkTrainingStats stats = net.getSparkTrainingStats();
                 try {
-                    StatsUtils.exportStatsAsHtml(stats, "SparkStats" + i + ".html", sc);
+                    StatsUtils.exportStatsAsHtml(stats, "src/main/resources/SparkStats" + i + ".html", sc);
                 }catch(Exception e){
                     log.error(e.getMessage());
                 }
@@ -104,7 +104,7 @@ public class StockPricePrediction {
 
             net.getNetwork().rnnClearPreviousState(); // clear previous state
         }
-        log.info(("IteratationCount3: " + net.getNetwork().getDefaultConfiguration().getIterationCount());
+        log.info(("IteratationCount3: " + net.getNetwork().getDefaultConfiguration().getIterationCount()));
         log.info("Saving model...");
         File locationToSave = new File("src/main/resources/StockPriceLSTM_".concat(String.valueOf(category)).concat(".zip"));
         // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
@@ -130,15 +130,18 @@ public class StockPricePrediction {
     private static void predictPriceOneAhead (MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, double max, double min, PriceCategory category) {
         double[] predicts = new double[testData.size()];
         double[] actuals = new double[testData.size()];
+        log.info("testData" + testData);
         for (int i = 0; i < testData.size(); i++) {
             predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getDouble(exampleLength - 1) * (max - min) + min;
             actuals[i] = testData.get(i).getValue().getDouble(0);
         }
+        log.info("Afer predice the testData" + testData);
+        log.info("Afer predice the predicts" + predicts);
         log.info("Print out Predictions and Actual Values...");
         log.info("Predict,Actual");
         for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "," + actuals[i]);
         log.info("Plot...");
-        PlotUtils.plot(predicts, actuals, String.valueOf(category));
+//        PlotUtils.plot(predicts, actuals, String.valueOf(category));
     }
 
     private static void predictPriceMultiple (MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, double max, double min) {

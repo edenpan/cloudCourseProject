@@ -71,11 +71,11 @@ public class PlotUtils {
         } catch (IOException ex) {
             log.error(ex.getLocalizedMessage());
         }
-        final JFrame f = new JFrame();
-        f.add(panel);
-        f.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        f.pack();
-        f.setVisible(true);
+//        final JFrame f = new JFrame();
+//        f.add(panel);
+//        f.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+//        f.pack();
+//        f.setVisible(true);
 
     }
 

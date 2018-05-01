@@ -23,7 +23,7 @@ public class StockDataSetIterator implements DataSetIterator {
     private final Map<PriceCategory, Integer> featureMapIndex = ImmutableMap.of(PriceCategory.OPEN, 0, PriceCategory.CLOSE, 1,
             PriceCategory.LOW, 2, PriceCategory.HIGH, 3, PriceCategory.VOLUME, 4);
 
-    private final int VECTOR_SIZE = 5; // number of features for a stock data
+    private final int VECTOR_SIZE = 6; // number of features for a stock data
     private int miniBatchSize; // mini-batch size
     private int exampleLength = 22; // default 22, say, 22 working days per month
     private int predictLength = 1; // default 1, say, one day ahead prediction
@@ -49,8 +49,8 @@ public class StockDataSetIterator implements DataSetIterator {
 
 
 
-    public StockDataSetIterator (JavaSparkContext sc, String filename, String symbol, int miniBatchSize, int batchSplit, int exampleLength, double splitRatio, PriceCategory category) {
-        List<StockData> stockDataList = readStockDataFromFile(sc, filename, symbol);
+    public StockDataSetIterator (JavaSparkContext sc, String symbol, int miniBatchSize, int batchSplit, int exampleLength, double splitRatio, PriceCategory category) {
+        List<StockData> stockDataList = readStockDataFromFile(sc, symbol);
         this.dataSize = stockDataList.size();
         if(miniBatchSize != -1 ){
             this.miniBatchSize = miniBatchSize;
@@ -206,22 +206,23 @@ public class StockDataSetIterator implements DataSetIterator {
         return test;
     }
 
-    private List<StockData> readStockDataFromFile (JavaSparkContext sc, String filename, String symbol) {
+    private List<StockData> readStockDataFromFile (JavaSparkContext sc, String symbol) {
         List<StockData> stockList = new ArrayList<>();
-        JavaRDD<String> stockDataList = sc.textFile(filename);
+        String inputFilePath = "/StockData/" + symbol + ".csv";
+        JavaRDD<String> stockDataList = sc.textFile(inputFilePath);
 
         for (int i = 0; i < maxArray.length; i++) { // initialize max and min arrays
             maxArray[i] = Double.MIN_VALUE;
             minArray[i] = Double.MAX_VALUE;
         }
-        // load all elements in a list
-        JavaRDD<String> withSymbol = stockDataList.filter(new Function<String, Boolean>() {
-            @Override
-            public Boolean call(String s) throws Exception {
-                return s.contains(symbol);
-            }
-        });
-        List<String> stockListString = withSymbol.collect();
+//        // load all elements in a list
+//        JavaRDD<String> withSymbol = stockDataList.filter(new Function<String, Boolean>() {
+//            @Override
+//            public Boolean call(String s) throws Exception {
+//                return s.contains(symbol);
+//            }
+//        });
+        List<String> stockListString = stockDataList.collect();
 
         for (String stock : stockListString){
             String[] element = stock.split(",");
@@ -232,7 +233,8 @@ public class StockDataSetIterator implements DataSetIterator {
                 if (nums[i] < minArray[i]) minArray[i] = nums[i];
 
             }
-            stockList.add(new StockData(element[0], element[1], nums[0], nums[1], nums[2], nums[3], nums[4]));
+            //StockData(String date, String symbol, double open, double close, double low, double volumehigh, double volume)
+            stockList.add(new StockData(element[0], element[1], nums[0], nums[5], nums[2], nums[1], nums[4]));
         }
 
         return stockList;

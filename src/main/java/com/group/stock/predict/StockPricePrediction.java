@@ -5,10 +5,10 @@ import com.group.stock.representation.PriceCategory;
 import com.group.stock.representation.StockDataSetIterator;
 import com.group.stock.utils.PlotUtils;
 import javafx.util.Pair;
-import org.apache.avro.generic.GenericData;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.storage.StorageLevel;
 import org.deeplearning4j.earlystopping.EarlyStoppingConfiguration;
 import org.deeplearning4j.earlystopping.saver.InMemoryModelSaver;
 import org.deeplearning4j.earlystopping.EarlyStoppingModelSaver;
@@ -39,7 +39,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.concurrent.TimeUnit;
+
+import static org.deeplearning4j.spark.api.Repartition.NumPartitionsWorkersDiffers;
+
 public class StockPricePrediction {
 
     private static final Logger log = LoggerFactory.getLogger(StockPricePrediction.class);
@@ -48,88 +50,93 @@ public class StockPricePrediction {
     public static void main(String[] args) throws IOException{
         SparkConf sparkConf = new SparkConf();
         //control whether running in the local or cluster
-        boolean useSparkLocal = false;
-        int averagingFrequency = 10;
-        int batchSizePerWorker = 64;
-        if (useSparkLocal) {
-            sparkConf.setMaster("local[*]");
-        }
+        int averagingFrequency = 1;
+        int batchSizePerWorker;
+
         //https://deeplearning4j.org/spark#kryo
         sparkConf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         sparkConf.set("spark.kryo.registrator", "org.nd4j.Nd4jRegistrator");
-
+        sparkConf.set("spark.executor.instances", "8");
         sparkConf.setAppName("Stock prediction with LSTM");
         JavaSparkContext sc = new JavaSparkContext(sparkConf);
 
         String file = "/stockPrice/prices-split-adjusted.csv";
-        String symbol = "GOOG";
+//        String symbol = "GOOG";
+        List<String> symbolList = new ArrayList<String>();
+        symbolList.add("GOOG");
+        symbolList.add("CWVGX");
         int batchSize = -1;
         double splitRatio = 0.9; // 90% for training, 10% for testing
-        int epochs = 1; // training epochs
+//        int epochs = 1; // training epochs
+        for(String symbol : symbolList) {
+            log.info("Create dataSet iterator...");
+            PriceCategory category = PriceCategory.CLOSE; // CLOSE: predict close price
+            StockDataSetIterator iterator = new StockDataSetIterator(sc, symbol, batchSize, 1, exampleLength, splitRatio, category);
+            log.info("Load test dataset...");
+            List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
 
-        log.info("Create dataSet iterator...");
-        PriceCategory category = PriceCategory.CLOSE; // CLOSE: predict close price
-        StockDataSetIterator iterator = new StockDataSetIterator(sc, file, symbol, batchSize, 1, exampleLength, splitRatio, category);
-        log.info("Load test dataset...");
-        List<Pair<INDArray, INDArray>> test = iterator.getTestDataSet();
+            //reset the batchSizePerWorker
+            batchSizePerWorker = test.size();
+            log.info("batchSizePerWorker: " + batchSizePerWorker);
+            log.info("Build lstm networks...");
+            int examplesPerDataSetObject = 1;
+            ParameterAveragingTrainingMaster tm = new ParameterAveragingTrainingMaster.Builder(examplesPerDataSetObject)
+                    .workerPrefetchNumBatches(2)    //Asynchronously prefetch up to 2 batches
+                    .averagingFrequency(averagingFrequency)
+                    .batchSizePerWorker(batchSizePerWorker)
+                    .rddTrainingApproach(RDDTrainingApproach.Direct)
+                    .repartionData(NumPartitionsWorkersDiffers)
+                    .build();
+            MultiLayerConfiguration conf = RecurrentNetsModelConf.buildLstmNetworksConf(iterator.inputColumns(), iterator.totalOutcomes());
+            //change to spark distribute mode
 
-        log.info("Build lstm networks...");
-        int examplesPerDataSetObject = 1;
-        ParameterAveragingTrainingMaster tm = new ParameterAveragingTrainingMaster.Builder(examplesPerDataSetObject)
-                .workerPrefetchNumBatches(10)    //Asynchronously prefetch up to 2 batches
-                .averagingFrequency(averagingFrequency)
-                .batchSizePerWorker(batchSizePerWorker)
-                .rddTrainingApproach(RDDTrainingApproach.Direct)
-                .build();
-        MultiLayerConfiguration conf = RecurrentNetsModelConf.buildLstmNetworksConf(iterator.inputColumns(), iterator.totalOutcomes());
-        //change to spark distribute mode
+            MultiLayerNetwork net = new MultiLayerNetwork(conf);
+            net.setListeners(Collections.<IterationListener>singletonList(new ScoreIterationListener(1)));
+            //just get all the data and i just set the length of iterator is 1.
 
-        MultiLayerNetwork net = new MultiLayerNetwork(conf);
-        net.setListeners(Collections.<IterationListener>singletonList(new ScoreIterationListener(1)));
-        //just get all the data and i just set the lenght of iterator is 1.
+            List<DataSet> testData = new ArrayList<>();
+            while (iterator.hasNext()) {
+                List<DataSet> temp = iterator.next().asList();
+                testData.addAll(temp);
+            }
+            JavaRDD<DataSet> testRdd = (JavaRDD<DataSet>) sc.parallelize(testData);
 
-        List<DataSet> testData = new ArrayList<>();
-        while(iterator.hasNext()){
-            List<DataSet> temp = iterator.next().asList();
-            testData.addAll(temp);
+            //testRdd.persist(StorageLevel.MEMORY_ONLY());
+
+            EarlyStoppingModelSaver<MultiLayerNetwork> saver = new InMemoryModelSaver<>();
+            EarlyStoppingConfiguration<MultiLayerNetwork> esConf =
+                    new EarlyStoppingConfiguration.Builder<MultiLayerNetwork>()
+                            .epochTerminationConditions(new MaxEpochsTerminationCondition(100))
+                            .iterationTerminationConditions(new MaxScoreIterationTerminationCondition(8.5))
+                            .scoreCalculator(new SparkDataSetLossCalculator(testRdd, true, sc.sc()))
+                            .modelSaver(saver).build();
+            IEarlyStoppingTrainer<MultiLayerNetwork> trainer = new SparkEarlyStoppingTrainer(sc, tm, esConf, net, testRdd);
+            log.info("Training...");
+            EarlyStoppingResult result = trainer.fit();
+
+            log.info("epoch number: " + result.getTotalEpochs());
+
+            log.info("Saving model...");
+            File locationToSave = new File("src/main/resources/StockPriceLSTM_".concat(String.valueOf(category)).concat(".zip"));
+            // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
+            ModelSerializer.writeModel(result.getBestModel(), locationToSave, true);
+            //        result.getBestModel().fit();
+            log.info("Load model...");
+            net = ModelSerializer.restoreMultiLayerNetwork(locationToSave);
+
+
+            log.info("Testing...");
+            if (category.equals(PriceCategory.ALL)) {
+                INDArray max = Nd4j.create(iterator.getMaxArray());
+                INDArray min = Nd4j.create(iterator.getMinArray());
+                predictAllCategories(net, test, max, min);
+            } else {
+                double max = iterator.getMaxNum(category);
+                double min = iterator.getMinNum(category);
+                predictPriceOneAhead(net, test, max, min, category);
+            }
+            log.info("Done...");
         }
-        JavaRDD<DataSet> testRdd = (JavaRDD<DataSet>)sc.parallelize(testData);
-
-
-
-        EarlyStoppingModelSaver<MultiLayerNetwork> saver = new InMemoryModelSaver<>();
-        EarlyStoppingConfiguration<MultiLayerNetwork> esConf =
-                new EarlyStoppingConfiguration.Builder<MultiLayerNetwork>()
-                        .epochTerminationConditions(new MaxEpochsTerminationCondition(100))
-                        .iterationTerminationConditions(new MaxScoreIterationTerminationCondition(8.5))
-                        .scoreCalculator(new SparkDataSetLossCalculator(testRdd, true, sc.sc()))
-                        .modelSaver(saver).build();
-        IEarlyStoppingTrainer<MultiLayerNetwork> trainer = new SparkEarlyStoppingTrainer(sc, tm, esConf, net, testRdd);
-        log.info("Training...");
-        EarlyStoppingResult result = trainer.fit();
-
-        log.info("epoch number: " + result.getTotalEpochs());
-
-        log.info("Saving model...");
-        File locationToSave = new File("src/main/resources/StockPriceLSTM_".concat(String.valueOf(category)).concat(".zip"));
-        // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
-        ModelSerializer.writeModel(result.getBestModel(), locationToSave, true);
-//        result.getBestModel().fit();
-        log.info("Load model...");
-        net = ModelSerializer.restoreMultiLayerNetwork(locationToSave);
-
-
-        log.info("Testing...");
-        if (category.equals(PriceCategory.ALL)) {
-            INDArray max = Nd4j.create(iterator.getMaxArray());
-            INDArray min = Nd4j.create(iterator.getMinArray());
-            predictAllCategories(net, test, max, min);
-        } else {
-            double max = iterator.getMaxNum(category);
-            double min = iterator.getMinNum(category);
-            predictPriceOneAhead(net, test, max, min, category);
-        }
-        log.info("Done...");
     }
 
     /** Predict one feature of a stock one-day ahead */

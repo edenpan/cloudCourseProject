@@ -55,10 +55,10 @@ public class StockPricePrediction {
         //control whether running in the local or cluster
         int averagingFrequency = 1;
         int batchSizePerWorker;
-        Node node = nodeBuilder().settings(Settings.builder()
-                .put("path.home", "/home/elastic").put("cluster.name","elasticsearch").build())
-                .client(true).node();
-        Client client = node.client();
+//        Node node = nodeBuilder().settings(Settings.builder()
+//                .put("path.home", "/home/elastic").put("cluster.name","elasticsearch").build())
+//                .client(true).node();
+//        Client client = node.client();
         //https://deeplearning4j.org/spark#kryo
         sparkConf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         sparkConf.set("spark.kryo.registrator", "org.nd4j.Nd4jRegistrator");
@@ -71,6 +71,13 @@ public class StockPricePrediction {
         List<String> symbolList = new ArrayList<String>();
         symbolList.add("GOOG");
         symbolList.add("CWVGX");
+        symbolList.add("AAPL");
+        symbolList.add("AAOI");
+        symbolList.add("AAON");
+        symbolList.add("JRBRX");
+        symbolList.add("JREPX");
+        symbolList.add("JRFOX");
+        symbolList.add("JSCZX");
         int batchSize = -1;
         double splitRatio = 0.9; // 90% for training, 10% for testing
 //        int epochs = 1; // training epochs
@@ -136,7 +143,7 @@ public class StockPricePrediction {
             if (category.equals(PriceCategory.ALL)) {
                 INDArray max = Nd4j.create(iterator.getMaxArray());
                 INDArray min = Nd4j.create(iterator.getMinArray());
-                predictAllCategories(net, test, max, min, client, symbol);
+                predictAllCategories(net, test, max, min, symbol);
             } else {
                 double max = iterator.getMaxNum(category);
                 double min = iterator.getMinNum(category);
@@ -169,27 +176,27 @@ public class StockPricePrediction {
     }
 
     /** Predict all the features (open, close, low, high prices and volume) of a stock one-day ahead */
-    private static void predictAllCategories (MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, INDArray max, INDArray min, Client client, String symbol) {
+    private static void predictAllCategories (MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, INDArray max, INDArray min, String symbol) {
         INDArray[] predicts = new INDArray[testData.size()];
         INDArray[] actuals = new INDArray[testData.size()];
         for (int i = 0; i < testData.size(); i++) {
             predicts[i] = net.rnnTimeStep(testData.get(i).getKey()).getRow(exampleLength - 1).mul(max.sub(min)).add(min);
             actuals[i] = testData.get(i).getValue();
         }
-        log.info("Print out Predictions and Actual Values...");
+        log.info("Print out Predictions and Actual Values...symbol:" + symbol);
         log.info("Predict\tActual");
         for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "\t" + actuals[i]);
         Map<String, INDArray[]> result = new HashMap<>();
         result.put("Predict", predicts);
         result.put("Actual", actuals);
         log.info("result: " + result);
-        IndexResponse response = client.prepareIndex("symbol", symbol)
-                .setSource(result).get();
-        String id = response.getId();
-        String index = response.getIndex();
-        String type = response.getType();
-        long version = response.getVersion();
-        log.info("Save into elasticSearch: \tid:" + id + "\tindex: " + index + "\ttype: " + type + "\tversion: " + version);
+//        IndexResponse response = client.prepareIndex("symbol", symbol)
+//                .setSource(result).get();
+//        String id = response.getId();
+//        String index = response.getIndex();
+//        String type = response.getType();
+//        long version = response.getVersion();
+//        log.info("Save into elasticSearch: \tid:" + id + "\tindex: " + index + "\ttype: " + type + "\tversion: " + version);
     }
 
 

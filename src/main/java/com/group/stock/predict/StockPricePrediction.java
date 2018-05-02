@@ -14,6 +14,7 @@ import org.deeplearning4j.earlystopping.saver.InMemoryModelSaver;
 import org.deeplearning4j.earlystopping.EarlyStoppingModelSaver;
 import org.deeplearning4j.earlystopping.termination.MaxEpochsTerminationCondition;
 import org.deeplearning4j.earlystopping.termination.MaxScoreIterationTerminationCondition;
+import org.deeplearning4j.earlystopping.termination.ScoreImprovementEpochTerminationCondition;
 import org.deeplearning4j.earlystopping.trainer.IEarlyStoppingTrainer;
 import org.deeplearning4j.nn.conf.MultiLayerConfiguration;
 import org.deeplearning4j.earlystopping.EarlyStoppingResult;
@@ -106,9 +107,10 @@ public class StockPricePrediction {
             EarlyStoppingModelSaver<MultiLayerNetwork> saver = new InMemoryModelSaver<>();
             EarlyStoppingConfiguration<MultiLayerNetwork> esConf =
                     new EarlyStoppingConfiguration.Builder<MultiLayerNetwork>()
-                            .epochTerminationConditions(new MaxEpochsTerminationCondition(100))
-                            .iterationTerminationConditions(new MaxScoreIterationTerminationCondition(8.5))
+                            .epochTerminationConditions(new ScoreImprovementEpochTerminationCondition(3, 0.01))
+//                            .iterationTerminationConditions(new MaxScoreIterationTerminationCondition(8.5))
                             .scoreCalculator(new SparkDataSetLossCalculator(testRdd, true, sc.sc()))
+                            .evaluateEveryNEpochs(1)
                             .modelSaver(saver).build();
             IEarlyStoppingTrainer<MultiLayerNetwork> trainer = new SparkEarlyStoppingTrainer(sc, tm, esConf, net, testRdd);
             log.info("Training...");

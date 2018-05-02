@@ -229,7 +229,7 @@ public class StockDataSetIterator implements DataSetIterator {
             String[] element = stock.split(",");
             double[] nums = new double[VECTOR_SIZE];
             for (int i = 0; i < VECTOR_SIZE; i++){
-                nums[i] = Double.valueOf(element[i + 2]);
+                nums[i] = Double.valueOf(element[i + 1]);
                 if (nums[i] > maxArray[i]) maxArray[i] = nums[i];
                 if (nums[i] < minArray[i]) minArray[i] = nums[i];
 

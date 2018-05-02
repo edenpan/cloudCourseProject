@@ -27,6 +27,9 @@ import org.deeplearning4j.util.ModelSerializer;
 import org.deeplearning4j.optimize.listeners.ScoreIterationListener;
 import org.deeplearning4j.optimize.api.IterationListener;
 import org.deeplearning4j.spark.api.RDDTrainingApproach;
+import org.elasticsearch.action.index.IndexResponse;
+import org.elasticsearch.client.Client;
+import org.elasticsearch.node.Node;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
@@ -36,12 +39,10 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
 
 import static org.deeplearning4j.spark.api.Repartition.NumPartitionsWorkersDiffers;
+import static org.elasticsearch.node.NodeBuilder.nodeBuilder;
 
 public class StockPricePrediction {
 
@@ -53,7 +54,8 @@ public class StockPricePrediction {
         //control whether running in the local or cluster
         int averagingFrequency = 1;
         int batchSizePerWorker;
-
+        Node node = nodeBuilder().clusterName("elasticsearch").client(true).node();
+        Client client = node.client();
         //https://deeplearning4j.org/spark#kryo
         sparkConf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");
         sparkConf.set("spark.kryo.registrator", "org.nd4j.Nd4jRegistrator");
@@ -119,7 +121,7 @@ public class StockPricePrediction {
             log.info("epoch number: " + result.getTotalEpochs());
 
             log.info("Saving model...");
-            File locationToSave = new File("src/main/resources/StockPriceLSTM_".concat(String.valueOf(category)).concat(".zip"));
+            File locationToSave = new File("src/main/resources/StockPriceLSTM_".concat(symbol).concat(String.valueOf(category)).concat(".zip"));
             // saveUpdater: i.e., the state for Momentum, RMSProp, Adagrad etc. Save this to train your network more in the future
             ModelSerializer.writeModel(result.getBestModel(), locationToSave, true);
             //        result.getBestModel().fit();
@@ -131,7 +133,7 @@ public class StockPricePrediction {
             if (category.equals(PriceCategory.ALL)) {
                 INDArray max = Nd4j.create(iterator.getMaxArray());
                 INDArray min = Nd4j.create(iterator.getMinArray());
-                predictAllCategories(net, test, max, min);
+                predictAllCategories(net, test, max, min, client, symbol);
             } else {
                 double max = iterator.getMaxNum(category);
                 double min = iterator.getMinNum(category);
@@ -164,7 +166,7 @@ public class StockPricePrediction {
     }
 
     /** Predict all the features (open, close, low, high prices and volume) of a stock one-day ahead */
-    private static void predictAllCategories (MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, INDArray max, INDArray min) {
+    private static void predictAllCategories (MultiLayerNetwork net, List<Pair<INDArray, INDArray>> testData, INDArray max, INDArray min, Client client, String symbol) {
         INDArray[] predicts = new INDArray[testData.size()];
         INDArray[] actuals = new INDArray[testData.size()];
         for (int i = 0; i < testData.size(); i++) {
@@ -174,25 +176,17 @@ public class StockPricePrediction {
         log.info("Print out Predictions and Actual Values...");
         log.info("Predict\tActual");
         for (int i = 0; i < predicts.length; i++) log.info(predicts[i] + "\t" + actuals[i]);
-        log.info("Plot...");
-        for (int n = 0; n < 5; n++) {
-            double[] pred = new double[predicts.length];
-            double[] actu = new double[actuals.length];
-            for (int i = 0; i < predicts.length; i++) {
-                pred[i] = predicts[i].getDouble(n);
-                actu[i] = actuals[i].getDouble(n);
-            }
-            String name;
-            switch (n) {
-                case 0: name = "Stock OPEN Price"; break;
-                case 1: name = "Stock CLOSE Price"; break;
-                case 2: name = "Stock LOW Price"; break;
-                case 3: name = "Stock HIGH Price"; break;
-                case 4: name = "Stock VOLUME Amount"; break;
-                default: throw new NoSuchElementException();
-            }
-            PlotUtils.plot(pred, actu, name);
-        }
+        Map<String, INDArray[]> result = new HashMap<>();
+        result.put("Predict", predicts);
+        result.put("Actual", actuals);
+        log.info("result: " + result);
+        IndexResponse response = client.prepareIndex("symbol", symbol)
+                .setSource(result).get();
+        String id = response.getId();
+        String index = response.getIndex();
+        String type = response.getType();
+        long version = response.getVersion();
+        log.info("Save into elasticSearch: \tid:" + id + "\tindex: " + index + "\ttype: " + type + "\tversion: " + version);
     }
 
 

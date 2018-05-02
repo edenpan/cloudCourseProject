@@ -70,7 +70,7 @@ public class StockPricePrediction {
         double splitRatio = 0.9; // 90% for training, 10% for testing
 //        int epochs = 1; // training epochs
         for(String symbol : symbolList) {
-            log.info("Create dataSet iterator...");
+            log.info("Create dataSet iterator... with symbol: " + symbol);
             PriceCategory category = PriceCategory.CLOSE; // CLOSE: predict close price
             StockDataSetIterator iterator = new StockDataSetIterator(sc, symbol, batchSize, 1, exampleLength, splitRatio, category);
             log.info("Load test dataset...");
@@ -80,7 +80,7 @@ public class StockPricePrediction {
             batchSizePerWorker = test.size();
             log.info("batchSizePerWorker: " + batchSizePerWorker);
             log.info("Build lstm networks...");
-            int examplesPerDataSetObject = 1;
+            int examplesPerDataSetObject = 4;
             ParameterAveragingTrainingMaster tm = new ParameterAveragingTrainingMaster.Builder(examplesPerDataSetObject)
                     .workerPrefetchNumBatches(2)    //Asynchronously prefetch up to 2 batches
                     .averagingFrequency(averagingFrequency)
@@ -107,7 +107,7 @@ public class StockPricePrediction {
             EarlyStoppingModelSaver<MultiLayerNetwork> saver = new InMemoryModelSaver<>();
             EarlyStoppingConfiguration<MultiLayerNetwork> esConf =
                     new EarlyStoppingConfiguration.Builder<MultiLayerNetwork>()
-                            .epochTerminationConditions(new ScoreImprovementEpochTerminationCondition(3, 0.01))
+                            .epochTerminationConditions(new MaxEpochsTerminationCondition(25))
 //                            .iterationTerminationConditions(new MaxScoreIterationTerminationCondition(8.5))
                             .scoreCalculator(new SparkDataSetLossCalculator(testRdd, true, sc.sc()))
                             .evaluateEveryNEpochs(1)

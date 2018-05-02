@@ -29,6 +29,7 @@ import org.deeplearning4j.optimize.api.IterationListener;
 import org.deeplearning4j.spark.api.RDDTrainingApproach;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.client.Client;
+import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.node.Node;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
@@ -54,7 +55,9 @@ public class StockPricePrediction {
         //control whether running in the local or cluster
         int averagingFrequency = 1;
         int batchSizePerWorker;
-        Node node = nodeBuilder().clusterName("elasticsearch").client(true).node();
+        Node node = nodeBuilder().settings(Settings.builder()
+                .put("path.home", "/home/elastic").put("cluster.name","elasticsearch").build())
+                .client(true).node();
         Client client = node.client();
         //https://deeplearning4j.org/spark#kryo
         sparkConf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer");

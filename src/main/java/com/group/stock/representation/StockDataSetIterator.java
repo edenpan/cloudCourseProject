@@ -222,7 +222,8 @@ public class StockDataSetIterator implements DataSetIterator {
 //                return s.contains(symbol);
 //            }
 //        });
-        List<String> stockListString = stockDataList.collect();
+        List<String> stockListtemp = stockDataList.collect();
+        List<String> stockListString = stockListtemp.subList(1,stockListtemp.size()-1);
 
         for (String stock : stockListString){
             String[] element = stock.split(",");

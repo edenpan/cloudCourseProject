@@ -65,23 +65,24 @@ public class StockPricePrediction {
         sparkConf.set("spark.executor.instances", "8");
         sparkConf.setAppName("Stock prediction with LSTM");
         JavaSparkContext sc = new JavaSparkContext(sparkConf);
+        //read stock symbol
+        String filePath = args[0];
+        List<String> StockList = new ArrayList<String>();
+        try{
+            File file = new File(filePath);
+            Scanner input = new Scanner(file);
+            while (input.hasNextLine()) {
+                String s = input.nextLine();
+                StockList.add(s);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
-        String file = "/stockPrice/prices-split-adjusted.csv";
-//        String symbol = "GOOG";
-        List<String> symbolList = new ArrayList<String>();
-        symbolList.add("GOOG");
-        symbolList.add("CWVGX");
-        symbolList.add("AAPL");
-        symbolList.add("AAOI");
-        symbolList.add("AAON");
-        symbolList.add("JRBRX");
-        symbolList.add("JREPX");
-        symbolList.add("JRFOX");
-        symbolList.add("JSCZX");
         int batchSize = -1;
         double splitRatio = 0.9; // 90% for training, 10% for testing
 //        int epochs = 1; // training epochs
-        for(String symbol : symbolList) {
+        for(String symbol : StockList) {
             log.info("Create dataSet iterator... with symbol: " + symbol);
             PriceCategory category = PriceCategory.CLOSE; // CLOSE: predict close price
             StockDataSetIterator iterator = new StockDataSetIterator(sc, symbol, batchSize, 1, exampleLength, splitRatio, category);
